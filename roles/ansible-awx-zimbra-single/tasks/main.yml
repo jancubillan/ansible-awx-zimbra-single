@@ -1,0 +1,172 @@
+---
+# tasks file for ansible-zimbra-single
+  - name: configure chronyd
+    service:
+      name: chronyd
+      state: started
+      enabled: yes
+
+  - name: configure time zone
+    timezone:
+      name: "{{ zimbra_timezone }}"
+
+  - name: configure time sync
+    shell: timedatectl set-ntp true
+
+  - name: restart chronyd
+    service:
+      name: chronyd
+      state: restarted
+
+  - name: configure hostname
+    hostname:
+      name: "{{ zimbra_fqdn }}"
+
+  - name: configure hosts file
+    lineinfile:
+       line: "{{ zimbra_ip }} {{ zimbra_fqdn }} {{ zimbra_shortname }}"
+       path: '/etc/hosts'
+
+  - name: install utilities
+    yum:
+      name:
+        - bash-completion
+        - tmux
+        - telnet
+        - bind-utils
+        - tcpdump
+        - wget
+        - lsof
+        - rsync
+        - tar
+        - nmap-ncat
+      state: present
+
+  - name: perform update
+    yum:
+      name: '*'
+      state: latest
+
+  - name: configure firewall
+    firewalld:
+      port: "{{ item }}"
+      permanent: yes
+      state: enabled
+      immediate: yes
+    loop:
+    - 25/tcp
+    - 465/tcp
+    - 587/tcp
+    - 110/tcp
+    - 995/tcp
+    - 143/tcp
+    - 993/tcp
+    - 80/tcp
+    - 443/tcp
+    - 7071/tcp
+
+  - name: check postfix rpm
+    shell: rpm -q postfix
+    register: postfix_rpm
+    ignore_errors: yes
+
+  - name: disable postfix
+    service:
+      name: postfix
+      state: stopped
+      enabled: no
+    when: postfix_rpm.rc == 0
+
+  - name: install bind
+    yum:
+      name: bind
+      state: present
+
+  - name: configure named.conf
+    template:
+      src: named.conf.j2
+      dest: /etc/named.conf
+      owner: root
+      group: named
+      mode: 0640
+
+  - name: generate serial
+    shell: date +%Y%m%d01
+    register: zimbra_serial
+
+  - name: configure forward zone
+    template:
+      src: domain.zone.j2
+      dest: /var/named/{{ zimbra_domain }}.zone
+      owner: root
+      group: named
+      mode: 0640
+
+  - name: configure reverse zone
+    template:
+      src: domain.revzone.j2
+      dest: /var/named/{{ zimbra_domain }}.revzone
+      owner: root
+      group: named
+      mode: 0640
+
+  - name: start and enable named
+    service:
+      name: named
+      state: started
+      enabled: yes
+
+  - name: configure local dns
+    shell: >
+      nmcli con mod "{{ zimbra_network_name }}" ipv4.dns 127.0.0.1 &&
+      nmcli con reload &&
+      nmcli con up "{{ zimbra_network_name }}"
+
+  - name: install dependencies
+    yum:
+      name:
+        - perl
+        - net-tools
+      state: present
+
+  - name: download zimbra installer
+    get_url:
+      url: https://files.zimbra.com/downloads/8.8.15_GA/zcs-8.8.15_GA_3953.RHEL8_64.20200629025823.tgz
+      dest: /root
+      checksum: sha256:https://files.zimbra.com/downloads/8.8.15_GA/zcs-8.8.15_GA_3953.RHEL8_64.20200629025823.tgz.sha256
+
+  - name: extract zimbra installer
+    unarchive:
+      src: /root/zcs-8.8.15_GA_3953.RHEL8_64.20200629025823.tgz
+      dest: /root
+      remote_src: yes
+
+  - name: configure answer file
+    template:
+      src: zimbra_answers.txt.j2
+      dest: /tmp/zimbra_answers.txt
+
+  - name: capture random chars
+    shell: date | md5sum | cut -c 1-9
+    register: zimbra_random_chars
+
+  - name: capture mailboxd memory
+    shell: free -m | awk 'NR==2{printf "%.0f\n", $2*0.25 }'
+    register: zimbra_mailboxd_memory
+
+  - name: capture system memory
+    shell: free -h | awk 'NR==2{printf "%.0f\n", $2 }'
+    register: zimbra_system_memory
+
+  - name: configure config file
+    template:
+      src: zimbra_config.txt.j2
+      dest: /tmp/zimbra_config.txt
+
+  - name: run zimbra installer phase 1
+    shell: ./install.sh -s < /tmp/zimbra_answers.txt
+    args:
+      chdir: /root/zcs-8.8.15_GA_3953.RHEL8_64.20200629025823/
+
+  - name: run zimbra installer phase 2
+    shell: /opt/zimbra/libexec/zmsetup.pl -c /tmp/zimbra_config.txt
