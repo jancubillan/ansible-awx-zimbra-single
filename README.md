@@ -27,6 +27,13 @@ Apply changes to suit your environment.
     zimbra_admin_password: ansible@zimbra2020
     zimbra_system_password: zimbra@ansible2020
 
+Inventory
+---------
+
+Inventory file similar below:
+
+    [zimbra_single]
+    mail.example.com ansible_host=192.168.122.75
 
 License
 -------
