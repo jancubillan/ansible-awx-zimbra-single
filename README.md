@@ -7,33 +7,24 @@ Requirements
 ------------
 
 1) Must be a fresh CentOS 8 minimal installation
-2) Static network configuration must be already set
+2) Ansible AWX node must have the "netaddr" Python module installed
 
 Role Variables
 --------------
 
 Apply changes to suit your environment.
 
-    zimbra_timezone: Asia/Manila
+    zimbra_timezone: Asia/Singapore
     zimbra_fqdn: mail.example.com
-    zimbra_shortname: mail
-    zimbra_network_name: enp1s0
-    zimbra_ip: 192.168.122.75
-    zimbra_reverse_ip: 122.168.192
-    zimbra_ptr: 75
-    zimbra_subnet: 192.168.122.0/24
-    zimbra_forwarders: 8.8.8.8; 8.8.4.4;
-    zimbra_domain: example.com
     zimbra_admin_password: ansible@zimbra2020
-    zimbra_system_password: zimbra@ansible2020
 
 Inventory
 ---------
 
 Inventory file similar below:
 
-    [zimbra_single]
-    mail.example.com ansible_host=192.168.122.75
+    [zimbra]
+    192.168.122.75
 
 License
 -------
